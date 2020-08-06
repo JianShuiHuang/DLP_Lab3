@@ -405,7 +405,7 @@ def main():
     #torch.save(model, 'preresnet18.pkl')
     """
     
-    test = Test(test_dataloader, model, Epochs18, 0)
+    test = Test(test_dataloader, model, Epochs50, 0)
     print('Test Accuracy: ', test)
     #print('Max accuracy: ', max(test_accuracy))
     #show_AccuracyCurve(train_accuracy, test_accuracy, Epochs18)

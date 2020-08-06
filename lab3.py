@@ -11,12 +11,10 @@ import numpy as np
 import torch.optim as optim
 from torch.autograd import Variable
 import torchvision.models as models 
-import matplotlib.pyplot as plt
 import pandas as pd
 from torch.utils import data
 from PIL import Image
 from torchvision import transforms
-from sklearn.metrics import confusion_matrix
 
 ##initialize variable
 lr = 1e-03
@@ -26,7 +24,7 @@ Epochs50 = 5
 Momentum = 0.9     
 Weight_decay = 5e-4
 
-device = torch.device('cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 y_pred = []
 
@@ -178,10 +176,10 @@ class resnet50_sub(nn.Module):
     def __init__(self, insize, midsize, outsize, stride, down):
         super(resnet50_sub, self).__init__()
         self.conv2 = nn.Sequential(
-                nn.Conv2d(insize, midsize, kernel_size=1, stride=stride, padding=0, bias=False), 
+                nn.Conv2d(insize, midsize, kernel_size=1, stride=1, padding=0, bias=False), 
                 nn.BatchNorm2d(midsize),
                 nn.ReLU(), 
-                nn.Conv2d(midsize, outsize, kernel_size=3, stride=4*stride, padding=1, bias=False), 
+                nn.Conv2d(midsize, outsize, kernel_size=3, stride=stride, padding=1, bias=False), 
                 nn.BatchNorm2d(outsize),
                 nn.ReLU(), 
                 nn.Conv2d(outsize, outsize, kernel_size=1, stride=1, padding=0, bias=False), 
@@ -190,8 +188,8 @@ class resnet50_sub(nn.Module):
         self.downsample = nn.Sequential()
         if down == True:
             self.downsample = nn.Sequential(
-                    nn.Conv2d(insize, outsize//2, kernel_size=1, stride=stride, bias=False), 
-                    nn.BatchNorm2d(outsize//2)
+                    nn.Conv2d(insize, outsize, kernel_size=1, stride=stride, bias=False), 
+                    nn.BatchNorm2d(outsize)
                     )
         self.activ = nn.ReLU()
     
@@ -213,32 +211,32 @@ class ResNet50(nn.Module):
         self.maxpool2d_1 = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         
         ##layer 2
-        self.layer1_2 = resnet50_sub(64, 64, 256, 1, False)
-        self.layer2_2 = resnet50_sub(64, 64, 256, 1, False)
-        self.layer3_2 = resnet50_sub(64, 64, 256, 1, False)
+        self.layer1_2 = resnet50_sub(64, 64, 256, 1, True)
+        self.layer2_2 = resnet50_sub(256, 64, 256, 1, False)
+        self.layer3_2 = resnet50_sub(256, 64, 256, 1, False)
         
         ##layer 3
-        self.layer1_3 = resnet50_sub(64, 128, 512, 2, True)
-        self.layer2_3 = resnet50_sub(128, 128, 512, 1, False)
-        self.layer3_3 = resnet50_sub(128, 128, 512, 1, False)
-        self.layer4_3 = resnet50_sub(128, 128, 512, 1, False)
+        self.layer1_3 = resnet50_sub(256, 128, 512, 2, True)
+        self.layer2_3 = resnet50_sub(512, 128, 512, 1, False)
+        self.layer3_3 = resnet50_sub(512, 128, 512, 1, False)
+        self.layer4_3 = resnet50_sub(512, 128, 512, 1, False)
         
         ##layer 4
-        self.layer1_4 = resnet50_sub(128, 256, 1204, 2, True)
-        self.layer2_4 = resnet50_sub(256, 256, 1024, 1, False)
-        self.layer3_4 = resnet50_sub(256, 256, 1024, 1, False)
-        self.layer4_4 = resnet50_sub(256, 256, 1024, 1, False)
-        self.layer5_4 = resnet50_sub(256, 256, 1024, 1, False)
-        self.layer6_4 = resnet50_sub(256, 256, 1024, 1, False)
+        self.layer1_4 = resnet50_sub(512, 256, 1024, 2, True)
+        self.layer2_4 = resnet50_sub(1024, 256, 1024, 1, False)
+        self.layer3_4 = resnet50_sub(1024, 256, 1024, 1, False)
+        self.layer4_4 = resnet50_sub(1024, 256, 1024, 1, False)
+        self.layer5_4 = resnet50_sub(1024, 256, 1024, 1, False)
+        self.layer6_4 = resnet50_sub(1024, 256, 1024, 1, False)
         
         ##layer 5
-        self.layer1_5 = resnet50_sub(256, 512, 2048, 2, True)
-        self.layer2_5 = resnet50_sub(512, 512, 2048, 1, False)
-        self.layer3_5 = resnet50_sub(512, 512, 2048, 1, False)
+        self.layer1_5 = resnet50_sub(1024, 512, 2048, 2, True)
+        self.layer2_5 = resnet50_sub(2048, 512, 2048, 1, False)
+        self.layer3_5 = resnet50_sub(2048, 512, 2048, 1, False)
         
         ##layer 6
         self.avgpool2d_6 = nn.AvgPool2d(kernel_size=7, stride=1, padding=0)
-        self.linear_6 = nn.Linear(in_features=51200, out_features=5, bias=True)
+        self.linear_6 = nn.Linear(in_features=204800, out_features=5, bias=True)
         
     def forward(self, x):
         y = self.conv2d_1(x)
@@ -291,7 +289,8 @@ def Train(data, model, optimizer):
             else:
                 false = false + 1
         
-        print(i, " true: ", true, " false: ", false)
+        if i % 200 == 0:
+            print(i, " true: ", true, " false: ", false)
             
         loss = Loss(prediction, y_train.long())
         loss.backward()
@@ -300,70 +299,48 @@ def Train(data, model, optimizer):
         
     return true / (true + false)
 
-def Test(data, model, optimizer, epoch, cur):
+def Test(data, model, epoch, cur):
     ##testing
     model.eval()
     true = 0
     false = 0
     
     for i, data_ten in enumerate(data):
-        test_data, test_label = data
+        test_data, test_label = data_ten
         test_data, test_label = test_data.to(device), test_label.to(device)
             
         x_test = Variable(test_data)
             
         prediction = model(x_test.float())
         
+        guess = torch.max(prediction, 1)[1]
+        
         if(cur == epoch - 1):
-            y_pred.append(prediction)
+            for j in range(len(guess)):
+                y_pred.append(guess[j].item())
+             
+        for j in range(len(guess)):
+            if guess[j] == test_label[j]:
+                true = true + 1
+            else:
+                false = false + 1
         
-        guess = torch.max(prediction)[1]
-        if guess == test_label:
-            true = true + 1
-        else:
-            false = false + 1
-        
+        if i % 200 == 0:
+            print(i, " true: ", true, " false: ", false)
         
     return true / (true + false)
 
 def Pretrained_model18():
     resnet18 = models.resnet18(pretrained = True)
-    resnet18.fc = nn.Linear(in_features=51200, out_features=5, bias=True)
+    resnet18.fc = nn.Linear(in_features=512, out_features=5, bias=True)
     
     return resnet18
 
-
-def show_AccuracyCurve(train_accuracy, test_accuracy, Epochs):
-    plt.title('Accuracy(%)', fontsize = 18)
-    x = []
-    for i in range(Epochs):
-        x.append(i)
-        plt.plot(i, train_accuracy[i], 'bo')
-        plt.plot(i, test_accuracy[i], 'ro')
+def Pretrained_model50():
+    resnet50 = models.resnet50(pretrained = True)
+    resnet50.fc = nn.Linear(in_features=2048, out_features=5, bias=True)
     
-    plt.plot(x, train_accuracy, test_accuracy)
-    plt.show()
-
-def plot_confusion_matrix(data, y_pred):
-    y_true = data.__getlabel__()
-    pic = confusion_matrix(y_true = y_true, y_pred = y_pred)
-    
-    label = [0, 0, 0, 0, 0]
-    for i in range(len(y_true)):
-        label[y_true[i]] += 1
-        
-    fig, ax = plt.subplots()
-    ax.matshow(pic, cmap=plt.cm.Blues, alpha=0.3)
-    
-    for i in range(pic.shape[0]):
-        for j in range(pic.shape[1]):
-            ax.text(x=j, y=i, s=pic[i, j] / label[i], va='center', ha='center')
-            
-    plt.xlabel('Predicted Label')
-    plt.ylabel('True Label')
-    plt.show()
-    
-
+    return resnet50
 
 def main():
     transformations = transforms.Compose([transforms.ToTensor()])
@@ -371,12 +348,15 @@ def main():
     test_data = RetinopathyLoader('data/', 'test', transformations)
     train_dataloader = torch.utils.data.DataLoader(dataset=train_data, batch_size=BatchSize, shuffle=False)
     test_dataloader = torch.utils.data.DataLoader(dataset=test_data, batch_size=BatchSize, shuffle=False)                                                                                             
+
     
+    """
     ##resnet18
     train_accuracy = []
     test_accuracy = []
     
-    model = ResNet18()
+    #model = ResNet18()
+    model = torch.load('resnet18.pkl')
     model = model.to(device)
     optimizer = optim.SGD(model.parameters(), lr = lr, momentum = Momentum, weight_decay = Weight_decay)
     
@@ -393,11 +373,48 @@ def main():
     np.save("test_accuracy_list.npy", test_accuracy)
     np.save("test_y_pred.npy", y_pred)
     torch.save(model, 'resnet18.pkl')
-    show_AccuracyCurve(train_accuracy, test_accuracy, Epochs18)
-    plot_confusion_matrix(test_dataloader, y_pred)
+    #show_AccuracyCurve(train_accuracy, test_accuracy, Epochs18)
+    #plot_confusion_matrix(test_dataloader, y_pred)
+    """
     
+   
     
-"""   
+    ##pretrain resnet18    
+    #train_accuracy = []
+    test_accuracy = []
+    
+    #model = Pretrained_model18()
+    model = torch.load('resnet18.pkl').to(device)
+    """
+    model = model.to(device)
+    optimizer = optim.SGD(model.parameters(), lr = lr, momentum = Momentum, weight_decay = Weight_decay)
+    y_pred = []
+    
+    for i in range(Epochs18):
+        train = Train(train_dataloader, model, optimizer)
+        train_accuracy.append(train)
+        test = Test(test_dataloader, model, optimizer, Epochs18, i)
+        test_accuracy.append(test)
+        print("epochs:", i )
+        print('Train Accuracy: ', train)
+        print('Test Accuracy: ', test)
+    print('Max accuracy: ', max(test_accuracy))
+    np.save("pretrain_accuracy_list.npy", train_accuracy)
+    np.save("pretest_accuracy_list.npy", test_accuracy)
+    np.save("pretest_y_pred.npy", y_pred)
+    #torch.save(model, 'preresnet18.pkl')
+    """
+    
+    test = Test(test_dataloader, model, Epochs18, 0)
+    print('Test Accuracy: ', test)
+    #print('Max accuracy: ', max(test_accuracy))
+    #show_AccuracyCurve(train_accuracy, test_accuracy, Epochs18)
+    #plot_confusion_matrix(test_dataloader, y_pred)
+    #y_true = test_data.__getlabel__()
+    #np.save("y_true.npy", y_true)
+    
+
+    """
     ##resnet50
     train_accuracy0 = []
     test_accuracy0 = []
@@ -416,14 +433,47 @@ def main():
         print('Train Accuracy: ', train0)
         print('Test Accuracy: ', test0)
     print('Max accuracy: ', max(test_accuracy0))
-    np.save("train_accuracy0_list.npy", train_accuracy0)
-    np.save("test_accuracy0_list.npy", test_accuracy0)
-    np.save("test_y_pred0.npy", y_pred)
+    np.save("train_accuracy50_list.npy", train_accuracy0)
+    np.save("test_accuracy50_list.npy", test_accuracy0)
+    np.save("test_y_pred50.npy", y_pred)
     torch.save(model0, 'resnet50.pkl')
-    show_AccuracyCurve(train_accuracy0, test_accuracy0, Epochs50)
-"""   
+    #show_AccuracyCurve(train_accuracy0, test_accuracy0, Epochs50)
+    #plot_confusion_matrix(test_dataloader, y_pred)
+    """
+
+    """
+    ##pretrain resnet50
+    #train_accuracy0 = []
+    test_accuracy0 = []
+    
+    #model0 = Pretrained_model50()
+    model0 = torch.load('preresnet50.pkl').to(device)
+    
+    model0 = model0.to(device)
+    optimizer0 = optim.SGD(model0.parameters(), lr = lr, momentum = Momentum, weight_decay = Weight_decay)
+    y_pred = []
+    
+    for i in range(Epochs50):
+        train0 = Train(train_dataloader, model0, optimizer0)
+        train_accuracy0.append(train0)
+        test0 = Test(test_dataloader, model0, optimizer0, Epochs50, i)
+        test_accuracy0.append(test0)
+        print("epochs:", i )
+        print('Train Accuracy: ', train0)
+        print('Test Accuracy: ', test0)
+    print('Max accuracy: ', max(test_accuracy0))
+    np.save("pretrain_accuracy50_list.npy", train_accuracy0)
+    np.save("pretest_accuracy50_list.npy", test_accuracy0)
+    np.save("pretest_y_pred50.npy", y_pred)
+    torch.save(model0, 'preresnet50.pkl')
+    #show_AccuracyCurve(train_accuracy0, test_accuracy0, Epochs50)
+    #plot_confusion_matrix(test_dataloader, y_pred)
     
     
+    test = Test(test_dataloader, model0, Epochs50, 0)
+    print('Test Accuracy: ', test)
+    #print('Max accuracy: ', max(test_accuracy))
+    """
     
     
 main()    

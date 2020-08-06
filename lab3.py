@@ -384,7 +384,7 @@ def main():
     test_accuracy = []
     
     #model = Pretrained_model18()
-    model = torch.load('resnet18.pkl').to(device)
+    model = torch.load('preresnet50.pkl').to(device)
     """
     model = model.to(device)
     optimizer = optim.SGD(model.parameters(), lr = lr, momentum = Momentum, weight_decay = Weight_decay)

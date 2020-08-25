@@ -41,7 +41,7 @@ def getData(mode):
 
 
 class RetinopathyLoader(data.Dataset):
-    def __init__(self, root, mode, transform = None, image_size = 512):
+    def __init__(self, root, mode, transform = None):
         """
         Args:
             root (string): Root path of the dataset.
@@ -53,12 +53,6 @@ class RetinopathyLoader(data.Dataset):
         self.root = root
         self.img_name, self.label = getData(mode)
         self.mode = mode
-        self.transformation = transforms.Compose([
-                                  transforms.Resize(image_size),
-                                  transforms.CenterCrop(image_size),
-                                  transforms.ToTensor(),
-                                  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-                              ])
         
         print("> Found %d images..." % (len(self.img_name)))
 
@@ -88,7 +82,6 @@ class RetinopathyLoader(data.Dataset):
         ##step1
         path = self.root + self.img_name[index] + '.jpeg'
         img = Image.open(path)
-        img = self.transformation(Image.fromarray(img))
         
         ##step2
         GroundTruth = self.label[index]
